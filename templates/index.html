@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#172b25">
+<title>Pengalaman Interaktif</title>
+<style>
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: #172b25;
+  color: #f5f3e9;
+  font-family: system-ui, sans-serif;
+}
+
+.card {
+  width: 100%;
+  max-width: 420px;
+  padding: 30px 24px;
+  border: 1px solid #52675b;
+  border-radius: 24px;
+  background: #233b30;
+  box-shadow: 0 20px 60px #0004;
+}
+
+.badge {
+  display: inline-block;
+  padding: 6px 10px;
+  border-radius: 20px;
+  background: #d9e7cf;
+  color: #20372b;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+h1 {
+  margin: 20px 0 12px;
+  font-size: 30px;
+  line-height: 1.15;
+}
+
+p {
+  line-height: 1.65;
+  color: #d5e0d6;
+}
+
+button {
+  width: 100%;
+  margin-top: 14px;
+  padding: 15px;
+  border: 0;
+  border-radius: 12px;
+  background: #d9e7cf;
+  color: #20372b;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.secondary {
+  background: transparent;
+  border: 1px solid #81988a;
+  color: #f5f3e9;
+}
+
+.small {
+  font-size: 12px;
+  color: #b8c9bb;
+}
+
+[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main class="card">
+  <span class="badge">PENGALAMAN INTERAKTIF</span>
+
+  <section id="intro">
+    <h1>Ada sesuatu untuk kamu ✨</h1>
+    <p>
+      Buka pengalaman interaktif ini dan ikuti langkah berikutnya.
+    </p>
+    <button id="openButton">✨ Buka Pengalaman</button>
+  </section>
+
+  <section id="consent" hidden>
+    <h1>Bagikan lokasi? 📍</h1>
+    <p>
+      Jika kamu melanjutkan, browser akan meminta izin untuk
+      mengakses lokasi perangkat. Koordinat hanya dikirim ke
+      server jika kamu menyetujui permintaan tersebut.
+    </p>
+    <button id="shareButton">📍 Izinkan &amp; Lanjutkan</button>
+    <button class="secondary" id="cancelButton">Tidak sekarang</button>
+  </section>
+
+  <section id="result" hidden aria-live="polite">
+    <h1 id="resultTitle">Status</h1>
+    <p id="resultText"></p>
+  </section>
+
+  <p class="small">
+    Kamu dapat menolak izin lokasi kapan saja melalui browser.
+  </p>
+</main>
+
+<script>
+const intro = document.getElementById("intro");
+const consent = document.getElementById("consent");
+const result = document.getElementById("result");
+const resultTitle = document.getElementById("resultTitle");
+const resultText = document.getElementById("resultText");
+
+document.getElementById("openButton").onclick = () => {
+  intro.hidden = true;
+  consent.hidden = false;
+};
+
+document.getElementById("cancelButton").onclick = () => {
+  consent.hidden = true;
+  intro.hidden = false;
+};
+
+document.getElementById("shareButton").onclick = () => {
+  if (!navigator.geolocation) {
+    showResult("Tidak tersedia",
+      "Browser ini tidak mendukung fitur lokasi.");
+    return;
+  }
+
+  showResult("Menunggu izin",
+    "Pilih Izinkan pada dialog lokasi browser jika ingin berbagi.");
+
+  navigator.geolocation.getCurrentPosition(
+    async position => {
+      try {
+        const response = await fetch("/share-location", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+            accuracy_m: position.coords.accuracy
+          })
+        });
+
+        if (!response.ok) throw new Error("Pengiriman gagal");
+
+        showResult("Berhasil 📍",
+          "Lokasi yang kamu setujui telah dibagikan.");
+      } catch (error) {
+        showResult("Belum berhasil",
+          "Lokasi tidak dapat dikirim. Periksa koneksi internet.");
+      }
+    },
+    error => {
+      showResult("Lokasi tidak dibagikan",
+        "Izin ditolak atau lokasi perangkat tidak tersedia.");
+    },
+    {enableHighAccuracy: true, timeout: 15000, maximumAge: 0}
+  );
+};
+
+function showResult(title, message) {
+  intro.hidden = true;
+  consent.hidden = true;
+  result.hidden = false;
+  resultTitle.textContent = title;
+  resultText.textContent = message;
+}
+</script>
+</body>
+</html>
