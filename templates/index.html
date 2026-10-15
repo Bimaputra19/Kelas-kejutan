@@ -5,8 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#172b25">
 <title>Pengalaman Interaktif</title>
+
 <style>
-* { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+}
 
 body {
   margin: 0;
@@ -31,7 +34,7 @@ body {
 
 .badge {
   display: inline-block;
-  padding: 6px 10px;
+  padding: 8px 12px;
   border-radius: 20px;
   background: #d9e7cf;
   color: #20372b;
@@ -40,9 +43,9 @@ body {
 }
 
 h1 {
-  margin: 20px 0 12px;
+  margin: 22px 0 12px;
   font-size: 30px;
-  line-height: 1.15;
+  line-height: 1.2;
 }
 
 p {
@@ -74,9 +77,16 @@ button {
   color: #b8c9bb;
 }
 
-[hidden] { display: none !important; }
+.status {
+  overflow-wrap: anywhere;
+}
+
+[hidden] {
+  display: none !important;
+}
 </style>
 </head>
+
 <body>
 <main class="card">
   <span class="badge">PENGALAMAN INTERAKTIF</span>
@@ -92,9 +102,9 @@ button {
   <section id="consent" hidden>
     <h1>Bagikan lokasi? 📍</h1>
     <p>
-      Jika kamu melanjutkan, browser akan meminta izin untuk
-      mengakses lokasi perangkat. Koordinat hanya dikirim ke
-      server jika kamu menyetujui permintaan tersebut.
+      Jika kamu memilih melanjutkan, browser akan meminta izin
+      lokasi perangkat. Koordinat hanya dikirim ke server setelah
+      kamu memberikan izin. Kamu boleh menolak tanpa melanjutkan.
     </p>
     <button id="shareButton">📍 Izinkan &amp; Lanjutkan</button>
     <button class="secondary" id="cancelButton">Tidak sekarang</button>
@@ -102,11 +112,15 @@ button {
 
   <section id="result" hidden aria-live="polite">
     <h1 id="resultTitle">Status</h1>
-    <p id="resultText"></p>
+    <p id="resultText" class="status"></p>
+    <button class="secondary" id="retryButton" hidden>
+      Coba lagi
+    </button>
   </section>
 
   <p class="small">
-    Kamu dapat menolak izin lokasi kapan saja melalui browser.
+    Lokasi tidak dibagikan jika kamu menolak izin. Izin juga dapat
+    diubah melalui pengaturan browser.
   </p>
 </main>
 
@@ -116,63 +130,116 @@ const consent = document.getElementById("consent");
 const result = document.getElementById("result");
 const resultTitle = document.getElementById("resultTitle");
 const resultText = document.getElementById("resultText");
+const shareButton = document.getElementById("shareButton");
+const retryButton = document.getElementById("retryButton");
 
-document.getElementById("openButton").onclick = () => {
+document.getElementById("openButton").addEventListener("click", () => {
   intro.hidden = true;
   consent.hidden = false;
-};
+  result.hidden = true;
+});
 
-document.getElementById("cancelButton").onclick = () => {
+document.getElementById("cancelButton").addEventListener("click", () => {
   consent.hidden = true;
   intro.hidden = false;
-};
+  result.hidden = true;
+});
 
-document.getElementById("shareButton").onclick = () => {
+retryButton.addEventListener("click", () => {
+  result.hidden = true;
+  consent.hidden = false;
+});
+
+shareButton.addEventListener("click", () => {
   if (!navigator.geolocation) {
-    showResult("Tidak tersedia",
-      "Browser ini tidak mendukung fitur lokasi.");
+    showResult(
+      "Lokasi tidak tersedia",
+      "Browser ini tidak mendukung fitur lokasi.",
+      true
+    );
     return;
   }
 
-  showResult("Menunggu izin",
-    "Pilih Izinkan pada dialog lokasi browser jika ingin berbagi.");
+  shareButton.disabled = true;
+  shareButton.textContent = "Meminta izin lokasi…";
+
+  showResult(
+    "Menunggu izin",
+    "Pilih Izinkan pada dialog browser jika kamu ingin membagikan lokasi.",
+    false
+  );
 
   navigator.geolocation.getCurrentPosition(
-    async position => {
+    async (position) => {
       try {
         const response = await fetch("/share-location", {
           method: "POST",
-          headers: {"Content-Type": "application/json"},
+          headers: {
+            "Content-Type": "application/json"
+          },
           body: JSON.stringify({
+            consent: true,
             latitude: position.coords.latitude,
             longitude: position.coords.longitude,
             accuracy_m: position.coords.accuracy
           })
         });
 
-        if (!response.ok) throw new Error("Pengiriman gagal");
+        const data = await response.json().catch(() => ({}));
 
-        showResult("Berhasil 📍",
-          "Lokasi yang kamu setujui telah dibagikan.");
+        if (!response.ok) {
+          throw new Error(
+            data.error || `Server menolak permintaan (${response.status})`
+          );
+        }
+
+        showResult(
+          "Berhasil 📍",
+          "Lokasi yang kamu setujui telah berhasil dibagikan.",
+          false
+        );
       } catch (error) {
-        showResult("Belum berhasil",
-          "Lokasi tidak dapat dikirim. Periksa koneksi internet.");
+        showResult(
+          "Pengiriman gagal",
+          error.message || "Periksa koneksi internet dan coba lagi.",
+          true
+        );
+      } finally {
+        shareButton.disabled = false;
+        shareButton.textContent = "📍 Izinkan & Lanjutkan";
       }
     },
-    error => {
-      showResult("Lokasi tidak dibagikan",
-        "Izin ditolak atau lokasi perangkat tidak tersedia.");
-    },
-    {enableHighAccuracy: true, timeout: 15000, maximumAge: 0}
-  );
-};
+    (error) => {
+      let message = "Lokasi tidak tersedia.";
 
-function showResult(title, message) {
+      if (error.code === 1) {
+        message = "Izin lokasi ditolak. Kamu bisa mengubah izin browser jika ingin mencoba lagi.";
+      } else if (error.code === 2) {
+        message = "Perangkat belum bisa menentukan lokasi. Periksa pengaturan lokasi perangkat.";
+      } else if (error.code === 3) {
+        message = "Permintaan lokasi kehabisan waktu. Silakan coba lagi.";
+      }
+
+      showResult("Lokasi tidak dibagikan", message, true);
+
+      shareButton.disabled = false;
+      shareButton.textContent = "📍 Izinkan & Lanjutkan";
+    },
+    {
+      enableHighAccuracy: true,
+      timeout: 20000,
+      maximumAge: 0
+    }
+  );
+});
+
+function showResult(title, message, allowRetry) {
   intro.hidden = true;
   consent.hidden = true;
   result.hidden = false;
   resultTitle.textContent = title;
   resultText.textContent = message;
+  retryButton.hidden = !allowRetry;
 }
 </script>
 </body>
